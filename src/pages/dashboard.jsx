@@ -29,18 +29,18 @@ const STATUS_COLOR  = { Approved: "#22c55e", Pending: "#f59e0b", Rejected: "#ef4
 const STATUS_BG     = { Approved: "rgba(34,197,94,0.08)", Pending: "rgba(245,158,11,0.08)", Rejected: "rgba(239,68,68,0.08)" };
 const STATUS_BORDER = { Approved: "rgba(34,197,94,0.2)", Pending: "rgba(245,158,11,0.2)", Rejected: "rgba(239,68,68,0.2)" };
 
-export default function Dashboard() {
+// ── CHANGE 1: Accept onNavigate prop ──────────────────────────────────────────
+export default function Dashboard({ onNavigate }) {
   const [form, setForm] = useState({ employee_id: "", employee_name: "", request_date: "", reason: "Personal", notes: "" });
   const [loading, setLoading] = useState(false);
   const [alert, setAlert] = useState(null);
   const [focusField, setFocusField] = useState(null);
-  // Start with empty history — gets populated from real submissions
   const [history, setHistory] = useState([]);
 
   const stats = {
-    approved:  history.filter(h => h.status === "Approved").length,
-    rejected:  history.filter(h => h.status === "Rejected").length,
-    pending:   history.filter(h => h.status === "Pending").length,
+    approved: history.filter(h => h.status === "Approved").length,
+    rejected: history.filter(h => h.status === "Rejected").length,
+    pending:  history.filter(h => h.status === "Pending").length,
   };
 
   const update = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -72,9 +72,9 @@ export default function Dashboard() {
 
       // ── APPROVED ──────────────────────────────────────────────
       if (data.success) {
-        const empName = data.data?.employee_name || form.employee_name;
-        const status  = data.data?.status || "Approved";
-        const aiMsg   = data.message || "Your day-off request has been approved.";
+        const empName   = data.data?.employee_name || form.employee_name;
+        const status    = data.data?.status || "Approved";
+        const aiMsg     = data.message || "Your day-off request has been approved.";
         const reasoning = data.data?.ai_reasoning || null;
 
         setAlert({
@@ -94,11 +94,11 @@ export default function Dashboard() {
 
       // ── REJECTED ──────────────────────────────────────────────
       } else {
-        const aiMsg      = data.message || "Your request could not be approved.";
-        const reasoning  = data.data?.ai_reasoning || null;
-        const alts       = data.data?.alternatives || [];
-        const suggested  = data.data?.suggested_date || null;
-        const conflicts  = (data.data?.conflicts || []).map(c =>
+        const aiMsg     = data.message || "Your request could not be approved.";
+        const reasoning = data.data?.ai_reasoning || null;
+        const alts      = data.data?.alternatives || [];
+        const suggested = data.data?.suggested_date || null;
+        const conflicts = (data.data?.conflicts || []).map(c =>
           typeof c === "string" ? { rule: c, severity: "Critical", detail: c } : c
         );
 
@@ -144,6 +144,7 @@ export default function Dashboard() {
         .submit-btn:hover:not(:disabled) { filter: brightness(1.1); transform: translateY(-1px); box-shadow: 0 8px 28px rgba(59,130,246,0.4) !important; }
         .submit-btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none !important; }
         .stat-card:hover { transform: translateY(-2px); border-color: #2a4a6a !important; }
+        .nav-btn:hover { background: rgba(16,185,129,0.14) !important; border-color: rgba(16,185,129,0.4) !important; color: #6ee7b7 !important; transform: translateY(-1px); }
       `}</style>
 
       <div style={{ minHeight: "100vh", background: "#060d18", color: "#e2e8f0", fontFamily: "'Plus Jakarta Sans', sans-serif", position: "relative" }}>
@@ -162,8 +163,10 @@ export default function Dashboard() {
 
         <div style={{ maxWidth: "1140px", margin: "0 auto", padding: "0 28px 80px", position: "relative", zIndex: 1 }}>
 
-          {/* HEADER */}
+          {/* ── HEADER ── */}
           <div style={{ padding: "36px 0 28px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid rgba(30,58,90,0.8)", marginBottom: "32px" }}>
+
+            {/* Left: logo + title */}
             <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
               <div style={{ width: "46px", height: "46px", background: "linear-gradient(135deg, #1d4ed8, #3b82f6)", borderRadius: "14px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px", boxShadow: "0 0 28px rgba(59,130,246,0.35), inset 0 1px 0 rgba(255,255,255,0.15)" }}>🏥</div>
               <div>
@@ -171,9 +174,41 @@ export default function Dashboard() {
                 <div style={{ fontSize: "12px", color: "#475569", marginTop: "1px" }}>Employee Day-Off Management System</div>
               </div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "7px", background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.2)", borderRadius: "24px", padding: "7px 16px", fontSize: "12px", fontWeight: "600", color: "#60a5fa" }}>
-              <span style={{ width: "7px", height: "7px", background: "#3b82f6", borderRadius: "50%", animation: "glow-pulse 2s infinite", display: "inline-block" }} />
-              AI-Powered Scheduling
+
+            {/* ── CHANGE 2: Right side — Schedule Checker button + AI badge ── */}
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+
+              {/* 🗓️ Schedule Checker navigation button */}
+              {onNavigate && (
+                <button
+                  className="nav-btn"
+                  onClick={() => onNavigate("schedule-checker")}
+                  style={{
+                    background: "rgba(16,185,129,0.08)",
+                    border: "1px solid rgba(16,185,129,0.25)",
+                    borderRadius: "10px",
+                    padding: "9px 18px",
+                    color: "#34d399",
+                    fontSize: "13px",
+                    fontWeight: "600",
+                    cursor: "pointer",
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    transition: "all 0.18s",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "7px",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  🗓️ Schedule Checker
+                </button>
+              )}
+
+              {/* Existing AI badge */}
+              <div style={{ display: "flex", alignItems: "center", gap: "7px", background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.2)", borderRadius: "24px", padding: "7px 16px", fontSize: "12px", fontWeight: "600", color: "#60a5fa" }}>
+                <span style={{ width: "7px", height: "7px", background: "#3b82f6", borderRadius: "50%", animation: "glow-pulse 2s infinite", display: "inline-block" }} />
+                AI-Powered Scheduling
+              </div>
             </div>
           </div>
 
@@ -244,7 +279,7 @@ export default function Dashboard() {
                     onFocus={() => setFocusField("notes")} onBlur={() => setFocusField(null)} />
                 </div>
 
-                {/* SUBMIT BUTTON ONLY */}
+                {/* SUBMIT BUTTON */}
                 <button className="submit-btn" onClick={handleSubmit} disabled={loading}
                   style={{ width: "100%", background: "linear-gradient(135deg, #2563eb, #3b82f6)", border: "none", borderRadius: "12px", padding: "14px", color: "#fff", fontSize: "14px", fontWeight: "700", cursor: "pointer", fontFamily: "'Plus Jakarta Sans', sans-serif", transition: "all 0.18s", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", boxShadow: "0 4px 20px rgba(59,130,246,0.3)", letterSpacing: "0.2px" }}>
                   {loading
@@ -266,9 +301,10 @@ export default function Dashboard() {
                       </span>
                     </div>
 
-                    {/* AI Message — main content */}
+                    {/* AI Message */}
                     <div style={{ padding: "14px 16px", background: "rgba(0,0,0,0.3)" }}>
-                      {/* Plain error body (connection errors etc) */}
+
+                      {/* Plain error body */}
                       {alert.body && !alert.aiMessage && (
                         <p style={{ fontSize: "13px", color: "#94a3b8", lineHeight: "1.6" }}>{alert.body}</p>
                       )}
