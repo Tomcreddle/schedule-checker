@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-const WEBHOOK_URL = "https://infinityw.com/webhook/schedule-check";
+const WEBHOOK_URL = "https://infinityw.com/webhook-test/schedule-check";
 const today = new Date().toISOString().split("T")[0];
 
 function formatDate(dateStr) {
