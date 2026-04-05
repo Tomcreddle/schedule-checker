@@ -422,8 +422,3 @@ Removes the single build dependency and copies all configuration files (webpack,
 - [npm run build fails to minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
 
 ---
-
-## 📄 License
-
-This project was developed as part of an On-the-Job Training (OJT) program for JISCare. For internal use only.
-
