@@ -1,0 +1,917 @@
+{
+  "name": "Day Off Request - Webhook Handler",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "dayoff-submit",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "dbad7d65-a3b0-4d1e-93f2-b55b2fc324c1",
+      "name": "📥 Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [
+        2800,
+        3296
+      ],
+      "webhookId": "dayoff-submit-webhook"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1UvI-gWJYQy3Fj-MTqgifP9sSmeFGTdy-Ws0u3nSms3Y",
+          "mode": "list",
+          "cachedResultName": "JISCare_Employee_Scheduler"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 883783029,
+          "mode": "list",
+          "cachedResultName": "DayOff_Requests"
+        },
+        "options": {}
+      },
+      "id": "bee533ed-92a8-4379-9a30-45f3c5372c0c",
+      "name": "🛑 Read DayOffs",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        3584,
+        3296
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "vTtBD4jbVsgXkXmL",
+          "name": "Google Sheets account 8"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rawBody = $('📥 Webhook').first().json;\nconst req = rawBody.body || rawBody;\n\nconst employees = ($('👤 Read Employees3').all() || []).map(i => i.json);\nconst shifts    = ($('📅 Read Shifts3').all()    || []).map(i => i.json);\nconst dayoffRaw = ($('🛑 Read DayOffs').all()   || []).map(i => i.json);\n\nconst WEEKDAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];\nconst MAX_OFF  = 2;\n\nfunction toISO(s) {\n  if (!s) return null;\n  const p = String(s).split('-');\n  if (p.length !== 3) return null;\n  const [a,b,c] = p;\n  return a.length === 4\n    ? `${a}-${b.padStart(2,'0')}-${c.padStart(2,'0')}`\n    : `${c.padStart(4,'0')}-${b.padStart(2,'0')}-${a.padStart(2,'0')}`;\n}\n\nfunction weekday(d) {\n  if (!d) return null;\n  const dt = new Date(d + 'T00:00:00');\n  return isNaN(dt) ? null : WEEKDAYS[dt.getDay()];\n}\n\nfunction addDays(d, n) {\n  if (!d) return null;\n  const dt = new Date(d + 'T00:00:00');\n  if (isNaN(dt)) return null;\n  dt.setDate(dt.getDate() + n);\n  return dt.toISOString().split('T')[0];\n}\n\nfunction getISOWeek(d) {\n  const dt = new Date(d + 'T00:00:00');\n  dt.setHours(0,0,0,0);\n  dt.setDate(dt.getDate() + 3 - (dt.getDay() + 6) % 7);\n  const week1 = new Date(dt.getFullYear(), 0, 4);\n  return 1 + Math.round(((dt.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);\n}\n\nfunction getWeekYear(d) {\n  const dt = new Date(d + 'T00:00:00');\n  dt.setDate(dt.getDate() + 3 - (dt.getDay() + 6) % 7);\n  return dt.getFullYear();\n}\n\nconst dayoffs = dayoffRaw.map(r => ({ ...r, DateISO: toISO(r.Date) }));\n\n// ── Validate employee ─────────────────────────────────────────────\nconst employee = employees.find(e => e.Employee_ID === req.employee_id) || null;\nif (!employee) {\n  return [{ json: { valid: false, has_conflicts: false, can_submit: false, conflicts: [], alternatives: [],\n    error: 'INVALID_EMPLOYEE', error_message: `Employee ID \"${req.employee_id}\" not found.` } }];\n}\n\n// ── Validate date ─────────────────────────────────────────────────\nconst reqDate = toISO(req.request_date);\nif (!reqDate) {\n  return [{ json: { valid: false, has_conflicts: false, can_submit: false, conflicts: [], alternatives: [],\n    error: 'INVALID_DATE', error_message: `Date \"${req.request_date}\" is invalid.` } }];\n}\n\nconst today = new Date(); today.setHours(0,0,0,0);\nif (new Date(reqDate + 'T00:00:00') < today) {\n  return [{ json: { valid: false, has_conflicts: false, can_submit: false, conflicts: [], alternatives: [],\n    error: 'PAST_DATE', error_message: 'Cannot request a day-off for a past date.' } }];\n}\n\nconst empId = req.employee_id;\nconst empApproved    = dayoffs.filter(r => r.Employee_ID === empId && r.Status === 'Approved' && r.DateISO);\nconst othersOffToday = dayoffs.filter(r => r.DateISO === reqDate && r.Status === 'Approved' && r.Employee_ID !== empId);\nconst shiftToday     = shifts.find(s => s.Employee_ID === empId && toISO(s.Date) === reqDate);\nconst pendingDup     = dayoffs.find(r => r.Employee_ID === empId && r.DateISO === reqDate && r.Status === 'Pending');\n\nconst conflicts = [];\n\n// 1. Duplicate\nif (empApproved.find(a => a.DateISO === reqDate)) {\n  conflicts.push({ rule: 'Duplicate', severity: 'Critical',\n    detail: `You already have an approved day-off on ${reqDate}.` });\n}\n\n// 2. Pending duplicate\nif (pendingDup) {\n  conflicts.push({ rule: 'Pending Request Exists', severity: 'Critical',\n    detail: `You already have a pending request for ${reqDate}.` });\n}\n\n// 3. Shift conflict\nif (shiftToday && shiftToday.Shift_Type !== 'OFF') {\n  conflicts.push({ rule: 'Shift Conflict', severity: 'Critical',\n    detail: `You are scheduled for a ${shiftToday.Shift_Type} shift on ${reqDate}.` });\n}\n\n// 4. Max 2 employees off per day\nif (othersOffToday.length >= MAX_OFF) {\n  conflicts.push({ rule: 'Maximum Capacity', severity: 'Critical',\n    detail: `${othersOffToday.length}/${MAX_OFF} other employees are already off on this date. No slots remaining.` });\n}\n\n// 5. No consecutive days off\nconst dayBefore = addDays(reqDate, -1);\nconst dayAfter  = addDays(reqDate, 1);\nconst consecutive = empApproved.find(a => a.DateISO === dayBefore || a.DateISO === dayAfter);\nif (consecutive) {\n  const which = consecutive.DateISO === dayBefore ? dayBefore : dayAfter;\n  const label = consecutive.DateISO === dayBefore ? 'the day before' : 'the day after';\n  conflicts.push({ rule: 'Consecutive Days Off', severity: 'Critical',\n    detail: `You already have an approved day-off on ${which} (${label}). Consecutive days off are not allowed.` });\n}\n\n// 6. Max 1 day off per week\nconst reqWeek = getISOWeek(reqDate);\nconst reqWYear = getWeekYear(reqDate);\nconst sameWeek = empApproved.find(a => a.DateISO && getWeekYear(a.DateISO) === reqWYear && getISOWeek(a.DateISO) === reqWeek);\nif (sameWeek) {\n  conflicts.push({ rule: 'Weekly Limit', severity: 'Critical',\n    detail: `You already have an approved day-off this week on ${sameWeek.DateISO}. Only 1 day off per week is allowed.` });\n}\n\n// 7. No same weekday repeat\nconst reqWeekday = weekday(reqDate);\nconst sameWeekday = empApproved.find(a => a.DateISO && weekday(a.DateISO) === reqWeekday && a.DateISO !== reqDate);\nif (sameWeekday) {\n  conflicts.push({ rule: 'Same Weekday Repeat', severity: 'Critical',\n    detail: `You already took a ${reqWeekday} off on ${sameWeekday.DateISO}. Taking off on the same weekday repeatedly is not allowed.` });\n}\n\nconst hasConflicts = conflicts.length > 0;\n\n// ── Alternative dates (must pass ALL rules) ───────────────────────\nconst alternatives = [];\nlet cursor = addDays(reqDate, 1);\nlet tries  = 0;\nwhile (alternatives.length < 5 && tries < 60) {\n  tries++;\n  if (!cursor) break;\n\n  const cWeekday  = weekday(cursor);\n  const cWeek     = getISOWeek(cursor);\n  const cWYear    = getWeekYear(cursor);\n  const cBefore   = addDays(cursor, -1);\n  const cAfter    = addDays(cursor, 1);\n  const offCount  = dayoffs.filter(r => r.DateISO === cursor && r.Status === 'Approved').length;\n\n  const ok_shift    = !shifts.find(s => s.Employee_ID === empId && toISO(s.Date) === cursor && s.Shift_Type !== 'OFF');\n  const ok_dup      = !empApproved.find(a => a.DateISO === cursor);\n  const ok_cap      = offCount < MAX_OFF;\n  const ok_consec   = !empApproved.find(a => a.DateISO === cBefore || a.DateISO === cAfter);\n  const ok_week     = !empApproved.find(a => a.DateISO && getWeekYear(a.DateISO) === cWYear && getISOWeek(a.DateISO) === cWeek);\n  const ok_weekday  = !empApproved.find(a => a.DateISO && weekday(a.DateISO) === cWeekday);\n\n  if (ok_shift && ok_dup && ok_cap && ok_consec && ok_week && ok_weekday) {\n    alternatives.push({\n      date:     cursor,\n      weekday:  cWeekday,\n      capacity: `${offCount}/${MAX_OFF}`,\n      shift:    shifts.find(s => s.Employee_ID === empId && toISO(s.Date) === cursor)?.Shift_Type || 'OFF'\n    });\n  }\n  cursor = addDays(cursor, 1);\n}\n\nreturn [{ json: {\n  valid:         true,\n  has_conflicts: hasConflicts,\n  can_submit:    !hasConflicts,\n  conflicts,\n  employee,\n  request: {\n    employee_id:   req.employee_id,\n    employee_name: req.employee_name || employee.Name,\n    request_date:  reqDate,\n    reason:        req.reason || 'Not provided',\n    notes:         req.notes  || ''\n  },\n  alternatives,\n  timestamp: new Date().toISOString()\n}}];"
+      },
+      "id": "2a1c65b6-d8ff-4152-8f79-90e6d7315aee",
+      "name": "🔍 Validate & Check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3904,
+        3296
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "valid-check",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e168447e-6699-4471-a693-db24b897145d",
+      "name": "✅ Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        4128,
+        3296
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: $json.error, message: $json.error_message, data: null }) }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "a4adeaac-c106-4743-86fd-aa6d8abf0695",
+      "name": "⚠️ Error Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        4304,
+        3536
+      ]
+    },
+    {
+      "parameters": {
+        "model": "glm-4.5",
+        "options": {
+          "maxTokens": 1500,
+          "temperature": 0.3
+        }
+      },
+      "id": "d0511d3c-bb7c-4aef-a642-ec23d3fb26e7",
+      "name": "🤖 AI Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [
+        4400,
+        2976
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "0X6ikPPYjtTlSjK6",
+          "name": "ZAI Models"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are an HR scheduling assistant. Analyze this day-off request and respond with a JSON decision.\n\nFULL REQUEST CONTEXT:\n{{ JSON.stringify($json) }}\n\nEmployee: {{ $json.employee.Name }} (ID: {{ $json.request.employee_id }})\nDepartment: {{ $json.employee.Department }}\nPosition: {{ $json.employee.Position }}\nRequested Date: {{ $json.request.request_date }}\nReason: {{ $json.request.reason }}\nHas Conflicts: {{ $json.has_conflicts }}\n\nConflicts ({{ $json.conflicts.length }} total):\n{{ $json.conflicts.length > 0 ? $json.conflicts.map(c => '- [' + c.severity + '] ' + c.rule + ': ' + c.detail).join('\\n') : 'None - APPROVE this request' }}\n\nAlternative dates if needed:\n{{ $json.alternatives.map(a => a.date + ' (' + a.weekday + ') capacity: ' + a.capacity).join('\\n') || 'None found' }}\n\nSTRICT DECISION RULES:\n1. conflicts array is EMPTY → decision MUST be \"APPROVE\"\n2. conflicts array has ANY item → decision MUST be \"REJECTED\"\n3. Address {{ $json.employee.Name }} by first name\n4. Maximum Capacity: say another employee is already booked off that day\n5. Duplicate: say they already have approved leave on that date\n6. Pending Request Exists: say they already have a pending request\n7. Shift Conflict: say they are scheduled to work that day\n8. Consecutive Days Off: say they already have a day off right next to that date\n9. Weekly Limit: say they already used their day off this week\n10. Same Weekday Repeat: say they already took that weekday off before\n11. Never reveal other employee names or IDs\n12. If rejecting, MUST mention first alternative: {{ $json.alternatives[0] ? $json.alternatives[0].date + ' (' + $json.alternatives[0].weekday + ')' : 'no date available' }}\n13. Keep messages warm, 2-3 sentences max\n14. suggested_date MUST be: {{ $json.alternatives[0] ? $json.alternatives[0].date : null }}\n\nRespond ONLY with raw JSON (no markdown, no code fences):\n{\"decision\":\"APPROVE\",\"message\":\"...\",\"suggested_date\":\"{{ $json.alternatives[0] ? $json.alternatives[0].date : 'null' }}\",\"reasoning\":\"one sentence\"}"
+      },
+      "id": "645e1f03-06f0-42cb-b4e3-fffb1bd91b6e",
+      "name": "🧠 AI Decision",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
+      "position": [
+        4576,
+        3280
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const aiOutput = $input.first().json;\nlet ctx = {};\ntry { ctx = $('🔍 Validate & Check').first().json; } catch(e) { ctx = {}; }\n\nlet ai;\ntry {\n  const raw = (aiOutput.output || aiOutput.text || JSON.stringify(aiOutput))\n    .replace(/```json\\s*/g, '').replace(/```\\s*/g, '').trim();\n  const match = raw.match(/\\{[\\s\\S]*\"decision\"[\\s\\S]*\\}/);\n  ai = JSON.parse(match ? match[0] : raw);\n} catch(e) {\n  const rejected = (ctx.conflicts || []).length > 0;\n  const firstName = (ctx.employee?.Name || 'there').split(' ')[0];\n  ai = {\n    decision: rejected ? 'REJECTED' : 'APPROVE',\n    message: rejected\n      ? `Sorry ${firstName}, your request could not be approved due to a scheduling conflict.`\n      : `Great news ${firstName}! Your day-off request has been approved.`,\n    suggested_date: ctx.alternatives?.[0]?.date || null,\n    reasoning: 'Automated decision'\n  };\n}\n\nconst approved = (ai.decision || '').toUpperCase() === 'APPROVE';\n\nreturn [{ json: {\n  can_submit:    approved,\n  employee:      ctx.employee     || {},\n  request:       ctx.request      || {},\n  timestamp:     ctx.timestamp    || new Date().toISOString(),\n  conflicts:     ctx.conflicts    || [],\n  alternatives:  ctx.alternatives || [],\n  ai_decision: {\n    reasoning:      ai.reasoning      || '',\n    message:        ai.message        || '',\n    suggested_date: ai.suggested_date || null\n  }\n}}];"
+      },
+      "id": "41e0fb56-334a-41b7-8250-64940314edc4",
+      "name": "📋 Parse AI Decision",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5040,
+        3280
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "approved-check",
+              "leftValue": "={{ $json.can_submit }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b665eb70-dc84-4edb-b7a5-1fb47dcbd050",
+      "name": "🤔 Approved?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        5328,
+        3280
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1UvI-gWJYQy3Fj-MTqgifP9sSmeFGTdy-Ws0u3nSms3Y",
+          "mode": "list",
+          "cachedResultName": "JISCare_Employee_Scheduler"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 883783029,
+          "mode": "list",
+          "cachedResultName": "DayOff_Requests"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Employee_ID": "={{ $json.employee.Employee_ID }}",
+            "Employee_Name": "={{ $json.employee.Name }}",
+            "Date": "={{ $json.request.request_date }}",
+            "Status": "Approved",
+            "Reason": "={{ $json.request.reason }}",
+            "Requested_On": "={{ $json.timestamp }}",
+            "Manager_Note": "={{ $json.ai_decision.reasoning }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Employee_ID",
+              "displayName": "Employee_ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Employee_Name",
+              "displayName": "Employee_Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Reason",
+              "displayName": "Reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Requested_On",
+              "displayName": "Requested_On",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Manager_Note",
+              "displayName": "Manager_Note",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "425b9247-7507-499c-a847-6b811f2def57",
+      "name": "💾 Save Approved",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        5680,
+        3120
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "vTtBD4jbVsgXkXmL",
+          "name": "Google Sheets account 8"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1UvI-gWJYQy3Fj-MTqgifP9sSmeFGTdy-Ws0u3nSms3Y",
+          "mode": "list",
+          "cachedResultName": "JISCare_Employee_Scheduler"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 883783029,
+          "mode": "list",
+          "cachedResultName": "DayOff_Requests"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Employee_ID": "={{ $json.employee.Employee_ID }}",
+            "Employee_Name": "={{ $json.employee.Name }}",
+            "Date": "={{ $json.request.request_date }}",
+            "Status": "Rejected",
+            "Reason": "={{ $json.request.reason }}",
+            "Requested_On": "={{ $json.timestamp }}",
+            "Manager_Note": "={{ $json.ai_decision.reasoning }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Employee_ID",
+              "displayName": "Employee_ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Employee_Name",
+              "displayName": "Employee_Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Reason",
+              "displayName": "Reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Requested_On",
+              "displayName": "Requested_On",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Manager_Note",
+              "displayName": "Manager_Note",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "a01d2cbb-1755-4c48-8ea8-7ec6eccdf63e",
+      "name": "💾 Save Rejected",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        5680,
+        3408
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "vTtBD4jbVsgXkXmL",
+          "name": "Google Sheets account 8"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({\n  success: false,\n  status: 'rejected',\n  message: $('📋 Parse AI Decision').first().json.ai_decision.message,\n  data: {\n    employee_id:    $('📋 Parse AI Decision').first().json.employee.Employee_ID,\n    employee_name:  $('📋 Parse AI Decision').first().json.employee.Name,\n    date:           $('📋 Parse AI Decision').first().json.request.request_date,\n    status:         'Rejected',\n    ai_reasoning:   $('📋 Parse AI Decision').first().json.ai_decision.reasoning,\n    conflicts:      $('📋 Parse AI Decision').first().json.conflicts,\n    alternatives:   $('📋 Parse AI Decision').first().json.alternatives,\n    suggested_date: $('📋 Parse AI Decision').first().json.ai_decision.suggested_date\n  }\n}) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "255648aa-2884-4805-9695-e4b789604e44",
+      "name": "❌ Rejected Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        5968,
+        3408
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1UvI-gWJYQy3Fj-MTqgifP9sSmeFGTdy-Ws0u3nSms3Y",
+          "mode": "list",
+          "cachedResultName": "JISCare_Employee_Scheduler"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Employees"
+        },
+        "options": {}
+      },
+      "id": "4405262a-b507-4f51-98e7-471b4533a20f",
+      "name": "👤 Read Employees3",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        3088,
+        3296
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "vTtBD4jbVsgXkXmL",
+          "name": "Google Sheets account 8"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1UvI-gWJYQy3Fj-MTqgifP9sSmeFGTdy-Ws0u3nSms3Y",
+          "mode": "list",
+          "cachedResultName": "JISCare_Employee_Scheduler"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 277715034,
+          "mode": "list",
+          "cachedResultName": "Shifts"
+        },
+        "options": {}
+      },
+      "id": "86c7eb6a-e695-4dc4-b272-0316136676f9",
+      "name": "📅 Read Shifts3",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        3344,
+        3296
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "vTtBD4jbVsgXkXmL",
+          "name": "Google Sheets account 8"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({\n  success: true,\n  status: 'approved',\n  message: $('📋 Parse AI Decision').first().json.ai_decision.message,\n  data: {\n    employee_id:   $('📋 Parse AI Decision').first().json.employee.Employee_ID,\n    employee_name: $('📋 Parse AI Decision').first().json.employee.Name,\n    date:          $('📋 Parse AI Decision').first().json.request.request_date,\n    status:        'Approved',\n    ai_reasoning:  $('📋 Parse AI Decision').first().json.ai_decision.reasoning,\n    alternatives:  $('📋 Parse AI Decision').first().json.alternatives\n  }\n}) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "1828da19-f833-46b5-b1d3-8207f2144fe7",
+      "name": "✅ Approved Response1",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        5968,
+        3120
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## ENTRY POINT\n\n***Receives POST to /dayoff-submit. Payload: employee_id, employee_name, request_date, reason, notes.***\n",
+        "height": 176,
+        "width": 224
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        2736,
+        3440
+      ],
+      "typeVersion": 1,
+      "id": "52779a61-44b9-400d-81c1-5ec272c60ded",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "## DATA FETCH 1\n\n***Reads Employees sheet. Validates employee ID and pulls name, department, position for the AI prompt.***\n",
+        "width": 208,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        3040,
+        3104
+      ],
+      "typeVersion": 1,
+      "id": "387a6f98-58e1-4adb-b5ce-14c6a8d68f6a",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "## DATA FETCH 2\n\n***Reads Shifts sheet. Checks if the employee is already scheduled to work on the requested day-off date.***\n",
+        "height": 192,
+        "width": 208,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        3280,
+        3472
+      ],
+      "typeVersion": 1,
+      "id": "efa7dc0b-3880-41f6-a20c-648f9f405b0c",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "## DATA FETCH 3 \n\n***Reads DayOff_Requests sheet — all approved & pending records used for duplicate, weekly limit, and capacity checks.***\n",
+        "height": 176,
+        "width": 208,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        3536,
+        3088
+      ],
+      "typeVersion": 1,
+      "id": "988ea691-f8c8-4dc9-97f1-a62a3da8e1d4",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "content": "## 7 DAY VALIDATOR\n\n***Checks: duplicate, pending duplicate, shift conflict, max 2 off/day, consecutive days off, weekly limit (1/week), same weekday repeat. Finds up to 5 alt dates.***\n",
+        "height": 224,
+        "width": 224
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        3840,
+        3456
+      ],
+      "typeVersion": 1,
+      "id": "3d9e239f-a15e-4988-bb6c-dd6893acff90",
+      "name": "Sticky Note4"
+    },
+    {
+      "parameters": {
+        "content": "## INPUT GATE\n***Checks if employee exists and date is valid & not in the past. True → AI chain. False → instant HTTP 400 error response.***\n",
+        "height": 176,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        4064,
+        3072
+      ],
+      "typeVersion": 1,
+      "id": "99e594b7-8ef5-48cf-b294-9a9297cee504",
+      "name": "Sticky Note5"
+    },
+    {
+      "parameters": {
+        "content": "## LLM PROVIDER \n\n***Same GLM-4.5 model, temp 0.3. Provides language intelligence for the AI Decision chain below.***\n",
+        "height": 240,
+        "width": 182,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        4464,
+        2720
+      ],
+      "typeVersion": 1,
+      "id": "855c4d2d-5106-431e-82be-5b8f89976ac1",
+      "name": "Sticky Note6"
+    },
+    {
+      "parameters": {
+        "content": "## VALIDATION ERROR\n\n***Returns HTTP 400 with error code (INVALID_EMPLOYEE, INVALID_DATE, PAST_DATE) and a human-readable message.***",
+        "height": 256,
+        "width": 208
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        4240,
+        3712
+      ],
+      "typeVersion": 1,
+      "id": "8cf23462-1a50-4020-b5af-34384ac4ef33",
+      "name": "Sticky Note7"
+    },
+    {
+      "parameters": {
+        "content": "## AI ANALYSIS\n\n***Sends all 7 conflict results to GLM-4.5. Strict rules: empty conflicts → APPROVE, any conflict → REJECTED. Returns JSON with warm message & suggested date.***\n",
+        "height": 224,
+        "width": 208
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        4592,
+        3424
+      ],
+      "typeVersion": 1,
+      "id": "0eaaf328-0a0c-41e7-8055-36a2cb9ee82a",
+      "name": "Sticky Note8"
+    },
+    {
+      "parameters": {
+        "content": "## AI OUTPUT PARSER\n\n***Strips markdown, extracts JSON. Sets can_submit=true if decision is APPROVE. Falls back to automated message if AI response is malformed.***\n",
+        "height": 240,
+        "width": 208
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        4992,
+        3024
+      ],
+      "typeVersion": 1,
+      "id": "be5bd9cb-30e6-48fc-af09-d5f9235f1ea6",
+      "name": "Sticky Note9"
+    },
+    {
+      "parameters": {
+        "content": "## FINAL BRANCH\n\n***Checks can_submit flag. True → save as Approved + 200 OK. False → save as Rejected + 200 with rejection reason & alternatives.***",
+        "height": 240,
+        "width": 192
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        5280,
+        3424
+      ],
+      "typeVersion": 1,
+      "id": "d3806180-a7f6-421e-9370-c73752dbb252",
+      "name": "Sticky Note10"
+    },
+    {
+      "parameters": {
+        "content": "## REPORT APPROVED \n\n***Appends to DayOff_Requests with status=Approved. Saves employee ID/name, date, reason, timestamp, AI manager note.***\n",
+        "height": 240,
+        "width": 208,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        5632,
+        2864
+      ],
+      "typeVersion": 1,
+      "id": "dfc004e4-72b3-4d24-b190-5ff2bc801b8b",
+      "name": "Sticky Note11"
+    },
+    {
+      "parameters": {
+        "content": "## APPROVED REPLY\n\n***Returns success=true, status=\"approved\", AI warm message, employee data, date, and list of other available alternatives.***\n",
+        "height": 240,
+        "width": 192,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        5936,
+        2864
+      ],
+      "typeVersion": 1,
+      "id": "6744dc70-537e-4825-9023-6693974b5c9d",
+      "name": "Sticky Note12"
+    },
+    {
+      "parameters": {
+        "content": "## RECORD REJECTED\n\n***Appends to DayOff_Requests with status=Rejected. Same fields saved so managers can review rejection history.***",
+        "height": 224,
+        "width": 192,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        5632,
+        3568
+      ],
+      "typeVersion": 1,
+      "id": "bf23bf57-48f3-4ed5-bbd4-ee6b4375e36d",
+      "name": "Sticky Note13"
+    },
+    {
+      "parameters": {
+        "content": "## REJECTION REPLY\n\n***Returns success=false, status=\"rejected\", AI message explaining which rule failed, suggested_date, and up to 5 alternative dates.***\n",
+        "height": 224,
+        "width": 208,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        5920,
+        3568
+      ],
+      "typeVersion": 1,
+      "id": "13aa9018-9572-4771-a21d-252ac36dd18e",
+      "name": "Sticky Note14"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "📥 Webhook": {
+      "main": [
+        [
+          {
+            "node": "👤 Read Employees3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "👤 Read Employees3": {
+      "main": [
+        [
+          {
+            "node": "📅 Read Shifts3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📅 Read Shifts3": {
+      "main": [
+        [
+          {
+            "node": "🛑 Read DayOffs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🛑 Read DayOffs": {
+      "main": [
+        [
+          {
+            "node": "🔍 Validate & Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔍 Validate & Check": {
+      "main": [
+        [
+          {
+            "node": "✅ Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "✅ Valid?": {
+      "main": [
+        [
+          {
+            "node": "🧠 AI Decision",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "⚠️ Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🤖 AI Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "🧠 AI Decision",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🧠 AI Decision": {
+      "main": [
+        [
+          {
+            "node": "📋 Parse AI Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📋 Parse AI Decision": {
+      "main": [
+        [
+          {
+            "node": "🤔 Approved?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🤔 Approved?": {
+      "main": [
+        [
+          {
+            "node": "💾 Save Approved",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "💾 Save Rejected",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "💾 Save Approved": {
+      "main": [
+        [
+          {
+            "node": "✅ Approved Response1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "💾 Save Rejected": {
+      "main": [
+        [
+          {
+            "node": "❌ Rejected Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "timeSavedMode": "fixed",
+    "timezone": "Asia/Manila",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": true,
+    "timeSavedPerExecution": 3
+  },
+  "versionId": "6e5424c6-273a-423d-814a-c447ede3306a",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "d4b369ee1c5017946269ce35edcd80474f1777dab00b367dfa078080280dbe13"
+  },
+  "id": "2fMu3ly0Jm2znN5D",
+  "tags": []
+}

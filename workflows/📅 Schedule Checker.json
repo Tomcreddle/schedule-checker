@@ -1,0 +1,974 @@
+{
+  "name": "📅 Schedule Checker",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "schedule-check",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "7c1a99fc-0807-404f-8103-dc0feb03753b",
+      "name": "📥 Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [
+        -3568,
+        -16
+      ],
+      "webhookId": "schedule-check-webhook"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1UvI-gWJYQy3Fj-MTqgifP9sSmeFGTdy-Ws0u3nSms3Y",
+          "mode": "list",
+          "cachedResultName": "JISCare_Employee_Scheduler",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1UvI-gWJYQy3Fj-MTqgifP9sSmeFGTdy-Ws0u3nSms3Y/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Employees",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1UvI-gWJYQy3Fj-MTqgifP9sSmeFGTdy-Ws0u3nSms3Y/edit#gid=0"
+        },
+        "options": {}
+      },
+      "id": "dc6f6d2b-f78f-4021-b058-1e4ef3dfafcc",
+      "name": "👤 Read Employees",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        -3296,
+        -16
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "vTtBD4jbVsgXkXmL",
+          "name": "Google Sheets account 8"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1UvI-gWJYQy3Fj-MTqgifP9sSmeFGTdy-Ws0u3nSms3Y",
+          "mode": "list",
+          "cachedResultName": "JISCare_Employee_Scheduler",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1UvI-gWJYQy3Fj-MTqgifP9sSmeFGTdy-Ws0u3nSms3Y/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 277715034,
+          "mode": "list",
+          "cachedResultName": "Shifts",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1UvI-gWJYQy3Fj-MTqgifP9sSmeFGTdy-Ws0u3nSms3Y/edit#gid=277715034"
+        },
+        "options": {}
+      },
+      "id": "c7fc7b5b-5943-4271-a383-117cfd78b594",
+      "name": "📅 Read Shifts",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        -3040,
+        -16
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "vTtBD4jbVsgXkXmL",
+          "name": "Google Sheets account 8"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1UvI-gWJYQy3Fj-MTqgifP9sSmeFGTdy-Ws0u3nSms3Y",
+          "mode": "list",
+          "cachedResultName": "JISCare_Employee_Scheduler",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1UvI-gWJYQy3Fj-MTqgifP9sSmeFGTdy-Ws0u3nSms3Y/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1851227270,
+          "mode": "list",
+          "cachedResultName": "Rooms",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1UvI-gWJYQy3Fj-MTqgifP9sSmeFGTdy-Ws0u3nSms3Y/edit#gid=1851227270"
+        },
+        "options": {}
+      },
+      "id": "4be59fec-35d3-416b-a1d0-c876fb9a3dbc",
+      "name": "🏠 Read Rooms",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        -2784,
+        -16
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "vTtBD4jbVsgXkXmL",
+          "name": "Google Sheets account 8"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rawBody  = $('📥 Webhook').first().json;\nconst req      = rawBody.body || rawBody;\n\nconst employees = ($('👤 Read Employees').all() || []).map(i => i.json);\nconst shifts    = ($('📅 Read Shifts').all()    || []).map(i => i.json);\nconst rooms     = ($('🏠 Read Rooms').all()     || []).map(i => i.json);\n\nfunction toISO(s) {\n  if (!s) return null;\n  const p = String(s).split('-');\n  if (p.length !== 3) return null;\n  const [a, b, c] = p;\n  return a.length === 4\n    ? `${a}-${b.padStart(2,'0')}-${c.padStart(2,'0')}`\n    : `${c.padStart(4,'0')}-${b.padStart(2,'0')}-${a.padStart(2,'0')}`;\n}\n\nfunction addDays(d, n) {\n  if (!d) return null;\n  const dt = new Date(d + 'T00:00:00');\n  if (isNaN(dt)) return null;\n  dt.setDate(dt.getDate() + n);\n  return dt.toISOString().split('T')[0];\n}\n\nfunction toMinutes(t) {\n  if (!t) return null;\n  const clean = String(t).trim();\n  const match = clean.match(/^(\\d{1,2}):(\\d{2})\\s*(AM|PM)?$/i);\n  if (!match) return null;\n  let h = parseInt(match[1], 10);\n  const m = parseInt(match[2], 10);\n  const period = (match[3] || '').toUpperCase();\n  if (period === 'PM' && h !== 12) h += 12;\n  if (period === 'AM' && h === 12) h = 0;\n  return h * 60 + m;\n}\n\nfunction timesOverlap(s1, e1, s2, e2) {\n  const a = toMinutes(s1), b = toMinutes(e1);\n  const c = toMinutes(s2), d = toMinutes(e2);\n  if (a === null || b === null || c === null || d === null) return false;\n  return a < d && c < b;\n}\n\nconst empId     = req.employee_id;\nconst roomId    = req.room_id    || null;\nconst reqDate   = toISO(req.date);\nconst startTime = req.start_time || null;\nconst endTime   = req.end_time   || null;\nconst shiftType = (req.shift_type || 'Morning').trim();\nconst notes     = req.notes      || '';\n\nconst employee = employees.find(e => e.Employee_ID === empId) || null;\nif (!employee) {\n  return [{ json: { valid: false, error: 'INVALID_EMPLOYEE', error_message: `Employee ID \"${empId}\" not found.` } }];\n}\n\nif (!reqDate) {\n  return [{ json: { valid: false, error: 'INVALID_DATE', error_message: `Date \"${req.date}\" is invalid.` } }];\n}\n\nconst today = new Date(); today.setHours(0,0,0,0);\nif (new Date(reqDate + 'T00:00:00') < today) {\n  return [{ json: { valid: false, error: 'PAST_DATE', error_message: 'Cannot check schedule for a past date.' } }];\n}\n\nlet room = null;\nif (roomId) {\n  room = rooms.find(r => r.Room_ID === roomId) || null;\n  if (!room) {\n    return [{ json: { valid: false, error: 'INVALID_ROOM', error_message: `Room ID \"${roomId}\" not found.` } }];\n  }\n}\n\nconst conflicts = [];\n\n// 1. Employee double-booking\nif (shiftType !== 'OFF' && startTime && endTime) {\n  const empSameDay = shifts.filter(s => s.Employee_ID === empId && toISO(s.Date) === reqDate && s.Shift_Type !== 'OFF');\n  for (const s of empSameDay) {\n    if (timesOverlap(startTime, endTime, s.Start_Time, s.End_Time)) {\n      conflicts.push({ rule: 'Employee Double-Booking', severity: 'Critical', detail: `${employee.Name} is already scheduled for a ${s.Shift_Type} shift from ${s.Start_Time} to ${s.End_Time} on ${reqDate}.` });\n    }\n  }\n}\n\n// 2. Room double-booking\nif (roomId && room && shiftType !== 'OFF' && startTime && endTime) {\n  const roomSameDay = shifts.filter(s => s.Room_ID === roomId && toISO(s.Date) === reqDate && s.Shift_Type !== 'OFF');\n  for (const s of roomSameDay) {\n    if (timesOverlap(startTime, endTime, s.Start_Time, s.End_Time)) {\n      conflicts.push({ rule: 'Room Double-Booking', severity: 'Critical', detail: `Room \"${room.Room_Name}\" is already booked from ${s.Start_Time} to ${s.End_Time} on ${reqDate}.` });\n    }\n  }\n}\n\n// 3. Consecutive rest days\nif (shiftType === 'OFF') {\n  const empAllShifts = shifts.filter(s => s.Employee_ID === empId);\n  const isOff = (d) => !!empAllShifts.find(s => toISO(s.Date) === d && s.Shift_Type === 'OFF');\n  const dayBefore = addDays(reqDate, -1);\n  const dayAfter  = addDays(reqDate,  1);\n  if (isOff(dayBefore)) {\n    conflicts.push({ rule: 'Consecutive Rest Days', severity: 'Critical', detail: `${employee.Name} already has a rest day on ${dayBefore}. Consecutive rest days are not allowed.` });\n  } else if (isOff(dayAfter)) {\n    conflicts.push({ rule: 'Consecutive Rest Days', severity: 'Critical', detail: `${employee.Name} already has a rest day on ${dayAfter}. Consecutive rest days are not allowed.` });\n  }\n}\n\n// Alt rooms\nconst altRooms = [];\nif (conflicts.some(c => c.rule === 'Room Double-Booking')) {\n  for (const r of rooms) {\n    if (r.Room_ID === roomId) continue;\n    const hasConflict = shifts.some(s => s.Room_ID === r.Room_ID && toISO(s.Date) === reqDate && s.Shift_Type !== 'OFF' && timesOverlap(startTime, endTime, s.Start_Time, s.End_Time));\n    if (!hasConflict) altRooms.push({ room_id: r.Room_ID, room_name: r.Room_Name, capacity: r.Capacity || 'N/A', location: r.Location || 'N/A' });\n  }\n}\n\n// Alt dates\nconst altDates = [];\nif (conflicts.some(c => c.rule === 'Employee Double-Booking' || c.rule === 'Consecutive Rest Days')) {\n  let cursor = addDays(reqDate, 1);\n  let tries  = 0;\n  while (altDates.length < 3 && tries < 14) {\n    tries++;\n    if (!cursor) break;\n    const empBusy = shifts.some(s => s.Employee_ID === empId && toISO(s.Date) === cursor && s.Shift_Type !== 'OFF' && startTime && endTime && timesOverlap(startTime, endTime, s.Start_Time, s.End_Time));\n    const empAllShifts = shifts.filter(s => s.Employee_ID === empId);\n    const isOff = (d) => !!empAllShifts.find(s => toISO(s.Date) === d && s.Shift_Type === 'OFF');\n    const consecutiveIssue = shiftType === 'OFF' && (isOff(addDays(cursor, -1)) || isOff(addDays(cursor, 1)));\n    if (!empBusy && !consecutiveIssue) {\n      const dt = new Date(cursor + 'T00:00:00');\n      const weekday = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][dt.getDay()];\n      altDates.push({ date: cursor, weekday });\n    }\n    cursor = addDays(cursor, 1);\n  }\n}\n\nreturn [{ json: {\n  valid:         true,\n  has_conflicts: conflicts.length > 0,\n  conflicts,\n  employee,\n  room,\n  request: {\n    employee_id:   empId,\n    employee_name: employee.Name,\n    date:          reqDate,\n    shift_type:    shiftType,\n    start_time:    startTime,\n    end_time:      endTime,\n    room_id:       roomId,\n    room_name:     room ? room.Room_Name : null,\n    notes\n  },\n  alternatives: { rooms: altRooms, dates: altDates },\n  timestamp: new Date().toISOString()\n}}];"
+      },
+      "id": "a89dee4e-df13-40e7-8b96-36ad15a0c429",
+      "name": "🔍 Validate & Check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2528,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "valid-check",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "d705f84b-1d27-4d09-afe8-a3d141bef31d",
+      "name": "✅ Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -2272,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: $json.error, message: $json.error_message, data: null }) }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "2a81e6ee-5b1b-4ce0-82fb-983c08c8ed19",
+      "name": "⚠️ Error Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        -2080,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "model": "glm-4.5",
+        "options": {
+          "maxTokens": 1500,
+          "temperature": 0.3
+        }
+      },
+      "id": "11616d93-afe2-4b42-a40e-ecd416747d99",
+      "name": "🤖 AI Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [
+        -2032,
+        -272
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "0X6ikPPYjtTlSjK6",
+          "name": "ZAI Models"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are an HR scheduling assistant. Analyze this schedule check request and respond with a JSON decision.\n\nFULL CONTEXT:\n{{ JSON.stringify($json) }}\n\nEmployee: {{ $json.employee.Name }} (ID: {{ $json.request.employee_id }})\nDepartment: {{ $json.employee.Department }}\nPosition: {{ $json.employee.Position }}\nRequested Date: {{ $json.request.date }}\nShift Type: {{ $json.request.shift_type }}\nTime: {{ $json.request.start_time }} - {{ $json.request.end_time }}\nRoom: {{ $json.request.room_name || 'Not specified' }}\nHas Conflicts: {{ $json.has_conflicts }}\n\nConflicts ({{ $json.conflicts.length }} total):\n{{ $json.conflicts.length > 0 ? $json.conflicts.map(c => '- [' + c.severity + '] ' + c.rule + ': ' + c.detail).join('\\n') : 'None - schedule is CLEAR' }}\n\nAlternative rooms available:\n{{ $json.alternatives.rooms.length > 0 ? $json.alternatives.rooms.map(r => '- ' + r.room_name + ' (Capacity: ' + r.capacity + ', Location: ' + r.location + ')').join('\\n') : 'None' }}\n\nAlternative dates available:\n{{ $json.alternatives.dates.length > 0 ? $json.alternatives.dates.map(d => '- ' + d.date + ' (' + d.weekday + ')').join('\\n') : 'None' }}\n\nSTRICT RULES:\n1. conflicts array EMPTY → status MUST be \"CLEAR\"\n2. conflicts array has items → status MUST be \"CONFLICT\"\n3. Address {{ $json.employee.Name }} by first name only\n4. NEVER reveal other employee names or IDs\n5. If CONFLICT and alt room exists, mention: {{ $json.alternatives.rooms[0] ? $json.alternatives.rooms[0].room_name : 'none' }}\n6. If CONFLICT and alt date exists, mention: {{ $json.alternatives.dates[0] ? $json.alternatives.dates[0].date : 'none' }}\n7. Keep message warm, 2-3 sentences max\n8. suggested_room: {{ $json.alternatives.rooms[0] ? $json.alternatives.rooms[0].room_id : null }}\n9. suggested_date: {{ $json.alternatives.dates[0] ? $json.alternatives.dates[0].date : null }}\n\nRespond ONLY with raw JSON (no markdown):\n{\"status\":\"CLEAR\",\"message\":\"...\",\"suggested_room\":null,\"suggested_date\":null,\"reasoning\":\"one sentence\"}"
+      },
+      "id": "fcc4cbb3-a869-4045-9f95-b18679952160",
+      "name": "🧠 AI Decision",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
+      "position": [
+        -1888,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const aiOutput = $input.first().json;\nconst validationData = $('🔍 Validate & Check').first().json;\n\nlet aiMessage = '';\nlet aiReasoning = '';\nlet suggestedRoom = null;\nlet suggestedDate = null;\n\ntry {\n  const raw = (aiOutput.output || aiOutput.text || JSON.stringify(aiOutput))\n    .replace(/```json\\s*/g, '').replace(/```\\s*/g, '').trim();\n  const match = raw.match(/\\{[\\s\\S]*\"status\"[\\s\\S]*\\}/);\n  const ai = JSON.parse(match ? match[0] : raw);\n  aiMessage      = ai.message        || '';\n  aiReasoning    = ai.reasoning      || '';\n  suggestedRoom  = ai.suggested_room || null;\n  suggestedDate  = ai.suggested_date || null;\n} catch(e) {\n  const firstName = (validationData.employee?.Name || 'there').split(' ')[0];\n  const hasConflicts = validationData.has_conflicts || false;\n  \n  aiMessage   = hasConflicts\n    ? `Sorry ${firstName}, there is a scheduling conflict for this request.`\n    : `Great news ${firstName}! The schedule looks clear — no conflicts found.`;\n  aiReasoning = 'Automated decision based on validation';\n}\n\n// ✅ Check if clear based on has_conflicts flag\nconst isClear = validationData.has_conflicts === false;\n\n// Generate unique Request_ID\nconst now = new Date();\nconst pad = n => String(n).padStart(2, '0');\nconst dateStr = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}`;\nconst timeStr = `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;\nconst requestId = `SC-${dateStr}-${timeStr}`;\n\n// Deduplicate helpers\nfunction dedupeRooms(arr) {\n  const seen = new Set();\n  return (arr || []).filter(r => {\n    const k = r.room_id || r.Room_ID;\n    if (seen.has(k)) return false; \n    seen.add(k); \n    return true;\n  });\n}\n\nfunction dedupeDates(arr) {\n  const seen = new Set();\n  return (arr || []).filter(d => {\n    const k = d.date || d;\n    if (seen.has(k)) return false; \n    seen.add(k); \n    return true;\n  });\n}\n\nreturn [{ json: {\n  request_id:  requestId,\n  is_clear:    isClear,\n  employee:    validationData.employee  || {},\n  room:        validationData.room      || null,\n  request:     validationData.request   || {},\n  timestamp:   validationData.timestamp || new Date().toISOString(),\n  conflicts:   validationData.conflicts || [],\n  alternatives: {\n    rooms: dedupeRooms(validationData.alternatives?.rooms || []),\n    dates: dedupeDates(validationData.alternatives?.dates || [])\n  },\n  ai_decision: {\n    status:         isClear ? 'CLEAR' : 'CONFLICT',\n    reasoning:      aiReasoning,\n    message:        aiMessage,\n    suggested_room: suggestedRoom,\n    suggested_date: suggestedDate\n  }\n}}];"
+      },
+      "id": "ca8dff56-20a1-41eb-84a7-851a2d56d3d3",
+      "name": "📋 Parse AI Decision",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1520,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "clear-check",
+              "leftValue": "={{ $json.is_clear }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f3db3392-3c2a-400b-b536-893e6e8add97",
+      "name": "🤔 Clear?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -1200,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1UvI-gWJYQy3Fj-MTqgifP9sSmeFGTdy-Ws0u3nSms3Y",
+          "mode": "list",
+          "cachedResultName": "JISCare_Employee_Scheduler",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1UvI-gWJYQy3Fj-MTqgifP9sSmeFGTdy-Ws0u3nSms3Y/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1862952842,
+          "mode": "list",
+          "cachedResultName": "Schedule_Checks",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1UvI-gWJYQy3Fj-MTqgifP9sSmeFGTdy-Ws0u3nSms3Y/edit#gid=1862952842"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Logged_At": "={{ $('📋 Parse AI Decision').first().json.timestamp }}",
+            "Request_ID": "={{ $('📋 Parse AI Decision').first().json.request_id }}",
+            "Employee_ID": "={{ $('📋 Parse AI Decision').first().json.employee.Employee_ID }}",
+            "Date": "={{ $('📋 Parse AI Decision').first().json.request.date }}",
+            "Employee_Name": "={{ $('📋 Parse AI Decision').first().json.employee.Name }}",
+            "Shift_Type": "={{ $('📋 Parse AI Decision').first().json.request.shift_type }}",
+            "Room_ID": "={{ $('📋 Parse AI Decision').first().json.request.room_id || '' }}",
+            "Status": "={{ $('📋 Parse AI Decision').first().json.is_clear ? 'Clear' : 'Conflict' }}",
+            "Conflicts": "={{ $('📋 Parse AI Decision').first().json.conflicts.length > 0 ? $('📋 Parse AI Decision').first().json.conflicts.map(c => c.rule + ': ' + c.detail).join(' | ') : 'None' }}",
+            "AI_Reasoning": "={{ $('📋 Parse AI Decision').first().json.ai_decision.reasoning }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Logged_At",
+              "displayName": "Logged_At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Request_ID",
+              "displayName": "Request_ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Employee_ID",
+              "displayName": "Employee_ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Employee_Name",
+              "displayName": "Employee_Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Shift_Type",
+              "displayName": "Shift_Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Room_ID",
+              "displayName": "Room_ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Conflicts",
+              "displayName": "Conflicts",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "AI_Reasoning",
+              "displayName": "AI_Reasoning",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "ac9174d9-e4b4-41ea-aa3b-d7b11ee1b87f",
+      "name": "💾 Save to Sheet (Clear)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        -768,
+        -144
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "vTtBD4jbVsgXkXmL",
+          "name": "Google Sheets account 8"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1UvI-gWJYQy3Fj-MTqgifP9sSmeFGTdy-Ws0u3nSms3Y",
+          "mode": "list",
+          "cachedResultName": "JISCare_Employee_Scheduler",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1UvI-gWJYQy3Fj-MTqgifP9sSmeFGTdy-Ws0u3nSms3Y/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1862952842,
+          "mode": "list",
+          "cachedResultName": "Schedule_Checks",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1UvI-gWJYQy3Fj-MTqgifP9sSmeFGTdy-Ws0u3nSms3Y/edit#gid=1862952842"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Logged_At": "={{ $('📋 Parse AI Decision').first().json.timestamp }}",
+            "Request_ID": "={{ $('📋 Parse AI Decision').first().json.request_id }}",
+            "Employee_ID": "={{ $('📋 Parse AI Decision').first().json.employee.Employee_ID }}",
+            "Date": "={{ $('📋 Parse AI Decision').first().json.request.date }}",
+            "Employee_Name": "={{ $('📋 Parse AI Decision').first().json.employee.Name }}",
+            "Shift_Type": "={{ $('📋 Parse AI Decision').first().json.request.shift_type }}",
+            "Room_ID": "={{ $('📋 Parse AI Decision').first().json.request.room_id || '' }}",
+            "Status": "={{ $('📋 Parse AI Decision').first().json.is_clear ? 'Clear' : 'Conflict' }}",
+            "Conflicts": "={{ $('📋 Parse AI Decision').first().json.conflicts.length > 0 ? $('📋 Parse AI Decision').first().json.conflicts.map(c => c.rule + ': ' + c.detail).join(' | ') : 'None' }}",
+            "AI_Reasoning": "={{ $('📋 Parse AI Decision').first().json.ai_decision.reasoning }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Logged_At",
+              "displayName": "Logged_At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Request_ID",
+              "displayName": "Request_ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Employee_ID",
+              "displayName": "Employee_ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Employee_Name",
+              "displayName": "Employee_Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Shift_Type",
+              "displayName": "Shift_Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Room_ID",
+              "displayName": "Room_ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Conflicts",
+              "displayName": "Conflicts",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "AI_Reasoning",
+              "displayName": "AI_Reasoning",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "dbe54259-c1db-44f9-850b-d988d1b2d61e",
+      "name": "💾 Save to Sheet (Conflict)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        -768,
+        144
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "vTtBD4jbVsgXkXmL",
+          "name": "Google Sheets account 8"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({\n  success: true,\n  status: 'clear',\n  message: $('📋 Parse AI Decision').first().json.ai_decision.message,\n  data: {\n    employee_id:   $('📋 Parse AI Decision').first().json.employee.Employee_ID,\n    employee_name: $('📋 Parse AI Decision').first().json.employee.Name,\n    date:          $('📋 Parse AI Decision').first().json.request.date,\n    shift_type:    $('📋 Parse AI Decision').first().json.request.shift_type,\n    start_time:    $('📋 Parse AI Decision').first().json.request.start_time,\n    end_time:      $('📋 Parse AI Decision').first().json.request.end_time,\n    room_id:       $('📋 Parse AI Decision').first().json.request.room_id,\n    room_name:     $('📋 Parse AI Decision').first().json.request.room_name,\n    status:        'Clear',\n    conflicts:     [],\n    ai_reasoning:  $('📋 Parse AI Decision').first().json.ai_decision.reasoning,\n    alternatives:  $('📋 Parse AI Decision').first().json.alternatives\n  }\n}) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "ef3dc510-5267-4a71-9c72-70d71132a306",
+      "name": "✅ Clear Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        -384,
+        -144
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({\n  success: false,\n  status: 'conflict',\n  message: $('📋 Parse AI Decision').first().json.ai_decision.message,\n  data: {\n    employee_id:    $('📋 Parse AI Decision').first().json.employee.Employee_ID,\n    employee_name:  $('📋 Parse AI Decision').first().json.employee.Name,\n    date:           $('📋 Parse AI Decision').first().json.request.date,\n    shift_type:     $('📋 Parse AI Decision').first().json.request.shift_type,\n    start_time:     $('📋 Parse AI Decision').first().json.request.start_time,\n    end_time:       $('📋 Parse AI Decision').first().json.request.end_time,\n    room_id:        $('📋 Parse AI Decision').first().json.request.room_id,\n    room_name:      $('📋 Parse AI Decision').first().json.request.room_name,\n    status:         'Conflict',\n    conflicts:      $('📋 Parse AI Decision').first().json.conflicts,\n    ai_reasoning:   $('📋 Parse AI Decision').first().json.ai_decision.reasoning,\n    alternatives:   $('📋 Parse AI Decision').first().json.alternatives,\n    suggested_room: $('📋 Parse AI Decision').first().json.ai_decision.suggested_room,\n    suggested_date: $('📋 Parse AI Decision').first().json.ai_decision.suggested_date\n  }\n}) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "49ee44e1-ada4-4f86-96bf-38a9d18cc348",
+      "name": "❌ Conflict Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        -384,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## ENTRY POINT\n\n***Receives POST to /schedule-check. Payload: employee_id, room_id, date, start_time, end_time, shift_type, notes.***",
+        "height": 208,
+        "width": 214
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -3600,
+        128
+      ],
+      "typeVersion": 1,
+      "id": "2f3e1684-c208-46ff-b5a3-e6e40193cccc",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "## DATA FETCH #1\n\n***Reads the Employees sheet — loads all employee IDs, names, departments, positions into memory.***\n",
+        "height": 208,
+        "width": 192,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -3344,
+        -272
+      ],
+      "typeVersion": 1,
+      "id": "aafda802-4ed4-4d3e-b46b-0406bad22659",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "## DATA FETCH #2\n\n***Reads the Shifts sheet — all existing scheduled shifts with employee, room, date, and time data.***",
+        "width": 214
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -3104,
+        144
+      ],
+      "typeVersion": 1,
+      "id": "5a256283-974a-4b39-8b65-7663f8c552c9",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "## DATA FETCH #3\n\n***Reads the Rooms sheet — room IDs, names, capacity, and location for booking validation.***",
+        "height": 208,
+        "width": 198,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -2832,
+        -240
+      ],
+      "typeVersion": 1,
+      "id": "6844c058-de00-42e9-98bd-07bcd4715239",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "content": "## BUSINESS LOGIC\n\n***Runs 3 conflict checks: (1) employee double-booking, (2) room double-booking, (3) consecutive rest days. Finds alt rooms & dates.***",
+        "height": 240,
+        "width": 182
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -2576,
+        160
+      ],
+      "typeVersion": 1,
+      "id": "92690915-7cab-4e1b-a001-0e9f29ee7726",
+      "name": "Sticky Note4"
+    },
+    {
+      "parameters": {
+        "content": "## INPUT GATE\n\n***Checks if employee exists, date is valid & future, room is known. True → AI chain. False → instant HTTP 400 error.***",
+        "height": 192,
+        "width": 182,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -2304,
+        -224
+      ],
+      "typeVersion": 1,
+      "id": "08429a9e-9690-426e-a0cb-d7d4659fd60b",
+      "name": "Sticky Note5"
+    },
+    {
+      "parameters": {
+        "content": "## VALIDATION ERROR \n\n***Returns HTTP 400 with error code (INVALID_EMPLOYEE, INVALID_DATE, PAST_DATE, INVALID_ROOM) and a readable message.***",
+        "height": 240,
+        "width": 208
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -2112,
+        480
+      ],
+      "typeVersion": 1,
+      "id": "c456e262-4790-4532-a2e1-ac9ae446e1a9",
+      "name": "Sticky Note6"
+    },
+    {
+      "parameters": {
+        "content": "## LLM PROVIDER\n\n***GLM-4.5 via ZAI Models, temp 0.3. Low creativity setting ensures consistent, rule-following decisions every time.***",
+        "height": 240,
+        "width": 160,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1952,
+        -496
+      ],
+      "typeVersion": 1,
+      "id": "e71ff1a7-b2db-4690-bfae-2b433017c066",
+      "name": "Sticky Note7"
+    },
+    {
+      "parameters": {
+        "content": "## AI ANALYSIS\n\n***Sends full conflict context to GLM-4.5. Returns JSON: status (CLEAR/CONFLICT), warm first-name message, suggested room & date, reasoning.***",
+        "height": 240,
+        "width": 192
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1872,
+        112
+      ],
+      "typeVersion": 1,
+      "id": "a571829a-8cf0-4c63-9ae3-cb84b61eeabe",
+      "name": "Sticky Note8"
+    },
+    {
+      "parameters": {
+        "content": "## AI OUTPUT PARSER\n\n***Strips markdown fences, extracts JSON. Generates unique Request_ID (SC-YYYYMMDD-HHMMSS). Deduplicates alt rooms & dates.***\n",
+        "height": 256,
+        "width": 192
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1552,
+        -288
+      ],
+      "typeVersion": 1,
+      "id": "d2c0e6b0-91ca-4cff-9303-ad1d64d1f243",
+      "name": "Sticky Note9"
+    },
+    {
+      "parameters": {
+        "content": "## FINAL BRANCH \n\n***Checks is_clear flag. True → Clear path (save + 200 OK). False → Conflict path (save + 200 with conflict detail).***\n\n",
+        "height": 240,
+        "width": 176
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1232,
+        128
+      ],
+      "typeVersion": 1,
+      "id": "b9d1d8ea-94e3-4994-88bd-798a6b6a66b4",
+      "name": "Sticky Note10"
+    },
+    {
+      "parameters": {
+        "content": "## AUDIT LOG\n\n***Appends to Schedule_Checks: Request_ID, employee, date, shift, room, status=Clear, no conflicts, AI reasoning.***",
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -848,
+        -352
+      ],
+      "typeVersion": 1,
+      "id": "3292450e-4289-43b6-8ce1-1911ea35cc2d",
+      "name": "Sticky Note11"
+    },
+    {
+      "parameters": {
+        "content": "## SUCCESS REPLY\n\n***Returns success=true, status=\"clear\", AI message, full schedule data, empty conflicts array, and available alternatives.***\n",
+        "height": 176,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -448,
+        -336
+      ],
+      "typeVersion": 1,
+      "id": "9ef18ea7-3c62-4fae-8755-743f85379b3e",
+      "name": "Sticky Note12"
+    },
+    {
+      "parameters": {
+        "content": "## AUDIT LOG\n\n***Same fields but status=Conflict. Conflict details joined with \" | \" in the Conflicts column. AI reasoning saved.***",
+        "height": 176,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -848,
+        352
+      ],
+      "typeVersion": 1,
+      "id": "cafba8c0-53f0-48b0-be19-16854f9ff73e",
+      "name": "Sticky Note13"
+    },
+    {
+      "parameters": {
+        "content": "## CONFLICT REPLY \n***Returns success=false, status=\"conflict\", AI message, full conflict list, suggested_room, suggested_date, alternatives.***",
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -448,
+        352
+      ],
+      "typeVersion": 1,
+      "id": "326b9fcc-cad2-4440-a4eb-647cb5e92dca",
+      "name": "Sticky Note14"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "📥 Webhook": {
+      "main": [
+        [
+          {
+            "node": "👤 Read Employees",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "👤 Read Employees": {
+      "main": [
+        [
+          {
+            "node": "📅 Read Shifts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📅 Read Shifts": {
+      "main": [
+        [
+          {
+            "node": "🏠 Read Rooms",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🏠 Read Rooms": {
+      "main": [
+        [
+          {
+            "node": "🔍 Validate & Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔍 Validate & Check": {
+      "main": [
+        [
+          {
+            "node": "✅ Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "✅ Valid?": {
+      "main": [
+        [
+          {
+            "node": "🧠 AI Decision",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "⚠️ Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🤖 AI Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "🧠 AI Decision",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🧠 AI Decision": {
+      "main": [
+        [
+          {
+            "node": "📋 Parse AI Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📋 Parse AI Decision": {
+      "main": [
+        [
+          {
+            "node": "🤔 Clear?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🤔 Clear?": {
+      "main": [
+        [
+          {
+            "node": "💾 Save to Sheet (Clear)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "💾 Save to Sheet (Conflict)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "💾 Save to Sheet (Clear)": {
+      "main": [
+        [
+          {
+            "node": "✅ Clear Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "💾 Save to Sheet (Conflict)": {
+      "main": [
+        [
+          {
+            "node": "❌ Conflict Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "20db881c-40b9-49b7-a07a-9688283454a6",
+  "meta": {
+    "instanceId": "d4b369ee1c5017946269ce35edcd80474f1777dab00b367dfa078080280dbe13"
+  },
+  "id": "dscIYuSClE5MZ9W2",
+  "tags": []
+}
