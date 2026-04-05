@@ -421,4 +421,3 @@ Removes the single build dependency and copies all configuration files (webpack,
 - [Deployment](https://facebook.github.io/create-react-app/docs/deployment)
 - [npm run build fails to minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
 
----
